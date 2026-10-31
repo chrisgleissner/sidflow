@@ -1,3 +1,14 @@
+## Commit the sidromdep-1 list from the corrected HVSC #85 grading and prepare 1.0.0 (2026-10-31) — active
+
+- [x] Replace `data/exports/hvsc85-sidromdep-1.{bin,manifest.json}` with the list from the v2 grading
+  (methodology `f256dd98…`, run commit `ae90b9c`): 672 files, 1,516 subtunes, 19,228 bytes; verified
+  against all 87,868 graded subtunes.
+- [x] Regenerate `doc/research/hvsc-rom-grading-results.md`; update README, `doc/rom-dependency-list.md`
+  §16 and `hvsc-rom-dual-run.md`; point the release link at `rom-grading-hvsc85-20261031`.
+- [x] Release assets and notes prepared outside the repository (`workspace/rom-grade-release-v2/`).
+- [x] Bump all packages to 1.0.0 and add the CHANGES.md entry.
+- [ ] Three consecutive full test runs; push; PR to main (merge after #113); `@codex review`.
+
 ## Complete PR #112, full accelerated HVSC census and standalone Commander ROM list (2026-10-29) — active
 
 User decisions (2026-10-29): merge PR #112 first, then run a **fresh** accelerated

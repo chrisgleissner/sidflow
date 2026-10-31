@@ -663,13 +663,13 @@ bytes = 224 + 17 * listed_files + 5 * listed_subtunes
 
 The design target was at most about 40 KiB. Each additional listed file adds 17 bytes and each
 additional listed subtune 5 bytes. The listing ceiling is what bounds the count of listed subtunes.
-On the HVSC #85 grades, ceiling 253 would list 4,618 subtunes (5.3 %) in 3,252 files, 78,598 bytes,
-most of them near-perfect grades of 250 to 253; the release ceiling of 191 lists 1.8 %. Lowering the
+On the HVSC #85 grades, ceiling 253 would list 4,796 subtunes (5.5 %) in 3,361 files, 81,341 bytes,
+most of them near-perfect grades of 250 to 253; the release ceiling of 191 lists 1.7 %. Lowering the
 ceiling shrinks the file, raising it grows it; the full per-subtune grades stay available in the
 separately published grading results.
 
-Measured (HVSC #85 release list): 696 files and 1,556 subtunes are listed, 224 + 17 * 696 + 5 * 1,556 =
-19,836 bytes (19.4 KiB), about half the design estimate, because the real data clusters listed subtunes
+Measured (HVSC #85 release list): 672 files and 1,516 subtunes are listed, 224 + 17 * 672 + 5 * 1,516 =
+19,228 bytes (18.8 KiB), about half the design estimate, because the real data clusters listed subtunes
 in fewer files than the estimate assumed. See
 [hvsc-rom-grading-results.md](research/hvsc-rom-grading-results.md).
 
@@ -701,8 +701,8 @@ requires a record; 253 is the largest value that denotes a measured, graded diff
 upper bound of the ceiling. Listing exactly the subtunes with some lane at most `C` gives the
 invariant "unlisted implies every lane above `C`" with no extra table. The ceiling is a generator
 parameter rather than a constant because the calibration showed that listing every difference
-(`C = 253`) would add about 3,000 near-perfect 250 to 253 grades that no consumer wants to skip and would make
-the HVSC #85 list four times larger (78,598 instead of 19,836 bytes); the release picks `C = 191`
+(`C = 253`) would add about 3,300 near-perfect 250 to 253 grades that no consumer wants to skip and would make
+the HVSC #85 list four times larger (81,341 instead of 19,228 bytes); the release picks `C = 191`
 and publishes the full grades separately.
 One byte per lane keeps a decision at 5 bytes. No value is reserved
 for "unknown": an unmeasured lane is not a fidelity statement, so it cannot be a grade and the
@@ -766,5 +766,5 @@ sidromdep-1:
 - has no "unknown" value; unmeasured lanes are refused (or, in developer output, excluded and flagged)
 - carries SHA-256 provenance for the grading results, `Songlengths.md5`, the corpus and the grading
   methodology, plus the generator's recommended skip threshold
-- is exactly `224 + 17 * files + 5 * subtunes` bytes; 19,836 bytes for HVSC #85 (696 files, 1,556 subtunes)
+- is exactly `224 + 17 * files + 5 * subtunes` bytes; 19,228 bytes for HVSC #85 (672 files, 1,516 subtunes)
 - is generated only from complete grading results and verified by an exhaustive round trip

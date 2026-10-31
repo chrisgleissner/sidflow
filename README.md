@@ -155,16 +155,16 @@ metric, the calibration corpus and the acceptance gates, including a listening t
 
 ### Results at a glance
 
-- Without ROMs, **1,469 subtunes in 628 files** grade below 128 in at least one engine, 1.67% of
-  HVSC. Nearly all of them are BASIC programs (RSID files with the BASIC flag); only 54 other RSID
+- Without ROMs, **1,468 subtunes in 627 files** grade below 128 in at least one engine, 1.67% of
+  HVSC. Nearly all of them are BASIC programs (RSID files with the BASIC flag); only 53 other RSID
   and 28 PSID subtunes are affected.
 - With KERNAL+BASIC supplied, every subtune grades 255 except one, which reads the character ROM
   (Wacek/Acid_Flashback, 242/243).
-- The two engines agree on which side of 128 a subtune falls for all but 4 subtunes.
+- The two engines agree on which side of 128 a subtune falls for all but 3 subtunes.
 
 ### Use the SID ROM Dependency List
 
-The **SID ROM Dependency List** (format `sidromdep-1`) is the embeddable result: 19,836 bytes for
+The **SID ROM Dependency List** (format `sidromdep-1`) is the embeddable result: 19,228 bytes for
 HVSC #85, keyed by full-file MD5 and one-based subtune, with the four lane grades of every subtune
 that has a lane at or below the listing ceiling 191. It is checked in at
 [`data/exports/hvsc85-sidromdep-1.bin`](data/exports/hvsc85-sidromdep-1.bin) with its
@@ -190,7 +190,7 @@ bun scripts/rom-dependency-list/verify.ts \
 ### Where results are published
 
 The grading results and the list are published as a
-[sidflow-data release](https://github.com/chrisgleissner/sidflow-data/releases/tag/rom-audit-hvsc85-20261030),
+[sidflow-data release](https://github.com/chrisgleissner/sidflow-data/releases/tag/rom-grading-hvsc85-20261031),
 next to the similarity exports but as a separate release: data releases are immutable and carry
 the evidence needed to audit every grade.
 
@@ -223,7 +223,7 @@ bun scripts/rom-dependency-list/verify.ts --bin workspace/rom-dependency-list/hv
   --results workspace/rom-grade-full/grading-results.jsonl
 ```
 
-The full run took 8.4 hours with 18 workers on an i5-14600K. Every output carries a methodology
+The full run took 8.5 hours with 18 workers on an i5-14600K. Every output carries a methodology
 identity, a SHA-256 over the grader sources, both renderer binaries, the ROM images and the frozen
 options. A checkpoint written under a different identity is refused rather than mixed. The
 [grading design](doc/research/hvsc-rom-fidelity-grading.md#full-run) documents the options and
