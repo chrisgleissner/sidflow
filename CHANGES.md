@@ -54,8 +54,8 @@ All 87,868 subtunes were graded with 0 errors in 30,581 s on 18 workers. Without
 of subtunes play an identical register value sequence (254) or a bit-exact trace (255), and
 1,468 subtunes in 627 files, 1.67%, grade below 128 on at least one engine: 1,387 BASIC
 programs, 53 RSID and 28 PSID subtunes. 64 need only the KERNAL, 89 only BASIC and 1,315 both;
-none needs CHARGEN. The table per SID type is in the
-[sidflow-data 1.0.0 release notes](https://github.com/chrisgleissner/sidflow-data/releases/tag/1.0.0#rom-fidelity).
+none needs CHARGEN. The table per SID type is in the "ROM fidelity" section of the
+[sidflow-data 1.0.0 release notes](https://github.com/chrisgleissner/sidflow-data/releases/tag/1.0.0).
 The engines agree on which side of 128 a
 subtune falls for all but 3 subtunes. With KERNAL+BASIC supplied every subtune is bit-exact
 except `Wacek/Acid_Flashback`, which reads the character ROM and grades 242 and 243. The
