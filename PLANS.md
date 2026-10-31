@@ -2744,3 +2744,23 @@ Follow-up gate before default activation or any full classification: broaden
 adversarial coverage, qualify the exact backend/profile and failure behavior,
 and measure a representative stratified sample under target worker load with
 coordinator CPU included. No full census was started or authorized by this work.
+
+## Fix intermittent k6 perf-smoke `POST /api/play: EOF` (2026-10-30) — fix in review
+
+- [x] Compare failed CI runs (41052042972 and the two earlier ones) and the k6 journey timing.
+- [x] Root cause: `play-start-stream` has `pacingSeconds: 3` and sleeps after every step, including the
+  UI-only `click`/`waitForText` steps, so k6's keep-alive connection idles exactly 6.0 s between
+  `GET /api/search` and `POST /api/play`. Node closes an idle keep-alive socket after
+  `keepAliveTimeout + 1000 ms` (default 5000 + 1000 = 6005 ms, measured). k6's Go transport reuses the
+  connection at the same instant and the POST dies with `EOF`; Go only transparently retries idempotent
+  requests, so GETs survive the same race and POSTs do not.
+- [x] Reproduced with plain Node + k6 v2.3.0: 12 POSTs at 5.998 s gaps produced one
+  `Post ...: EOF`; the same sweep with `keepAliveTimeout=65000` produced none.
+- [x] Fix: the standalone server is started with `KEEP_ALIVE_TIMEOUT=65000` (supported by Next's generated
+  `server.js`) in `build-and-test.yaml`, `performance.yml` and `Dockerfile.production`. Threshold and
+  k6 retries are untouched.
+- [x] The `if: always()` stop step already prints the server log tail; no workflow change needed there.
+- Not proven: whether the Playwright e2e `ECONNRESET` log noise shares this cause (it comes from
+  `start-test-server.mjs` abort handling and was left alone).
+- Unrelated finding: server log shows `[hls-service] Failed to build HLS assets ... "path" argument must be of
+  type string. Received type number` during the same run; not the cause of the EOF, worth a separate look.
